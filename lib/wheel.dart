@@ -5,6 +5,7 @@ import 'package:flutter_svg/flutter_svg.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter_fortune_wheel/flutter_fortune_wheel.dart';
 import 'package:spinner_app/prize_data.dart';
+import 'package:share_plus/share_plus.dart';
 
 const background = Color(0XFF161E2F);
 const lightBackground = Color(0xFF242F49);
@@ -89,23 +90,34 @@ class _WheelState extends State<Wheel> with TickerProviderStateMixin {
           children: [
             Icon(won.icon, size: 64, color: won.color),
             const SizedBox(height: 16),
-            if(won.name == 'Try Again')
-            Text(
-              "unlucky :(",
-              style: TextStyle(color: Colors.white, fontSize: 24),
-            )
+            if (won.name == 'Try Again')
+              Text(
+                "unlucky !",
+                style: TextStyle(color: Colors.white, fontSize: 24),
+              )
             else
-            Text(
-              "You won!",
-              style: TextStyle(color: Colors.white, fontSize: 24),
-            ),
+              Text(
+                "You won!",
+                style: TextStyle(color: Colors.white, fontSize: 24),
+              ),
             const SizedBox(height: 8),
             Text(won.name, style: TextStyle(color: won.color, fontSize: 18)),
           ],
         ),
         actions: [
           OutlinedButton(
-            onPressed: () {},
+            onPressed: () {
+              final shareText =
+                  '''
+🎉 I just won ${won.name}!
+
+You can also be a winner in RectaZone.
+
+Try your luck here:
+https://fortune-wheel-demo-cb9c2.web.app
+''';
+              SharePlus.instance.share(ShareParams(text: shareText));
+            },
             style: OutlinedButton.styleFrom(
               foregroundColor: won.color,
               side: BorderSide(color: won.color),
@@ -202,7 +214,12 @@ class _WheelState extends State<Wheel> with TickerProviderStateMixin {
                     curve: Curves.easeInOut,
                     child: _showAccountDropdown
                         ? Container(
-                            margin: const EdgeInsets.fromLTRB(200, 0, 20, 0),
+                            margin: EdgeInsets.fromLTRB(
+                              size.width / 3,
+                              0,
+                              20,
+                              0,
+                            ),
                             padding: const EdgeInsets.all(30),
                             decoration: BoxDecoration(
                               color: lightBackground,
@@ -276,14 +293,20 @@ class _WheelState extends State<Wheel> with TickerProviderStateMixin {
                                       padding: const EdgeInsets.only(top: 2),
                                       child: Row(
                                         children: [
-                                          Icon(p.icon, size: 14, color: p.color),
+                                          Icon(
+                                            p.icon,
+                                            size: 14,
+                                            color: p.color,
+                                          ),
                                           const SizedBox(width: 6),
                                           Text(
                                             p.name.trim(),
                                             style: GoogleFonts.getFont(
                                               'Roboto',
                                               fontSize: 12,
-                                              color: onPrimary.withValues(alpha: 0.8),
+                                              color: onPrimary.withValues(
+                                                alpha: 0.8,
+                                              ),
                                             ),
                                           ),
                                         ],
@@ -489,7 +512,7 @@ class _AnimatedGridState extends State<_AnimatedGrid> {
       child: GridView.builder(
         physics: const NeverScrollableScrollPhysics(),
         gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-          crossAxisCount: 9,
+          crossAxisCount: 8,
           mainAxisSpacing: 2,
           crossAxisSpacing: 2,
         ),
