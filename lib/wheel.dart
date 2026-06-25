@@ -1,19 +1,13 @@
 import 'dart:async';
-import 'dart:math';
 import 'package:flutter/material.dart';
-import 'package:flutter_svg/flutter_svg.dart';
-import 'package:google_fonts/google_fonts.dart';
-import 'package:flutter_fortune_wheel/flutter_fortune_wheel.dart';
+import 'package:flutter_fortune_wheel/flutter_fortune_wheel.dart'; // Fortune wheel widget
 import 'package:spinner_app/prize_data.dart';
-import 'package:share_plus/share_plus.dart';
+import 'package:spinner_app/components.dart';
+import 'package:spinner_app/animated_grid.dart';
+import 'package:spinner_app/result_dialog.dart';
+import 'package:spinner_app/theme.dart';
 
-const background = Color(0XFF161E2F);
-const lightBackground = Color(0xFF242F49);
-const primary = Color(0xFF384358);
-const onPrimary = Color(0xFFFFA586);
-const secondary = Color(0xFFB51A2B);
-const onBackground = Color(0xFF541A2E);
-
+// Main fortune wheel screen
 class Wheel extends StatefulWidget {
   const Wheel({super.key});
 
@@ -22,13 +16,17 @@ class Wheel extends StatefulWidget {
 }
 
 class _WheelState extends State<Wheel> with TickerProviderStateMixin {
-  final StreamController<int> selectedController = StreamController<int>();
-  final ProfileData _profile = ProfileData();
+  // ---- State fields ----
+  final StreamController<int> selectedController =
+      StreamController<int>(); // Feeds the FortuneWheel stream
+  final ProfileData _profile = ProfileData(); // User data
   bool _isSpinning = false;
   bool _showAccountDropdown = false;
   int _lastWonIndex = 0;
 
-  late final AnimationController _wheelCtrl;
+  // ---- Animation ----
+  late final AnimationController
+  _wheelCtrl; // Controls the wheel slide-up animation
   late final Animation<double> _wheelAnim;
 
   @override
@@ -39,13 +37,19 @@ class _WheelState extends State<Wheel> with TickerProviderStateMixin {
       duration: const Duration(milliseconds: 800),
     );
     _wheelAnim = CurvedAnimation(parent: _wheelCtrl, curve: Curves.easeInOut);
+    // Rebuild on every animation frame so the wheel position updates
     _wheelCtrl.addListener(() {
+      //state final set mishe bad az reposition
       if (mounted) setState(() {});
     });
+    // When the slide-up animation finishes, pick a random prize
     _wheelCtrl.addStatusListener((status) {
       if (status == AnimationStatus.completed) {
+        //function random winner
         _lastWonIndex = Fortune.randomInt(0, prizes.length);
-        selectedController.add(_lastWonIndex);
+        selectedController.add(
+          _lastWonIndex,
+        ); // Tell the FortuneWheel where to land
       }
     });
   }
@@ -57,120 +61,82 @@ class _WheelState extends State<Wheel> with TickerProviderStateMixin {
     super.dispose();
   }
 
+  /// Called when the user taps SPIN.
   Future<void> _spin() async {
     if (_isSpinning) return;
-    _profile.tickets--;
-    setState(() => _isSpinning = true);
-    await _wheelCtrl.forward();
+    _profile.tickets--; // Spend one ticket
+    setState(() => _isSpinning = true); // state page changes
+    await _wheelCtrl.forward(); // Animate the wheel sliding up
   }
 
+  /// Called by the FortuneWheel when its spin animation ends.
   void _onSpinEnd() {
     Future.delayed(const Duration(milliseconds: 600), () async {
-      await _wheelCtrl.reverse();
-      if (mounted) _showResultDialog();
+      await _wheelCtrl.reverse(); // Slide the wheel back down
+      if (mounted)
+        await _showResultDialog(); //when done we go to state of result dialog
     });
   }
 
+  /// Reset state back to idle so the user can spin again.
   void _reset() {
     setState(() => _isSpinning = false);
   }
 
-  void _showResultDialog() {
+  /// Show the result dialog and record the prize.
+  Future<void> _showResultDialog() async {
     final won = prizes[_lastWonIndex];
+    // Don't save pooch as a real prize in profile
     if (won.name != 'Try Again') {
       _profile.wonPrizes.add(won);
     }
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (_) => AlertDialog(
-        backgroundColor: background,
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(won.icon, size: 64, color: won.color),
-            const SizedBox(height: 16),
-            if (won.name == 'Try Again')
-              Text(
-                "unlucky !",
-                style: TextStyle(color: Colors.white, fontSize: 24),
-              )
-            else
-              Text(
-                "You won!",
-                style: TextStyle(color: Colors.white, fontSize: 24),
-              ),
-            const SizedBox(height: 8),
-            Text(won.name, style: TextStyle(color: won.color, fontSize: 18)),
-          ],
-        ),
-        actions: [
-          OutlinedButton(
-            onPressed: () {
-              final shareText =
-                  '''
-🎉 I just won ${won.name}!
-
-You can also be a winner in RectaZone.
-
-Try your luck here:
-https://fortune-wheel-demo-cb9c2.web.app
-''';
-              SharePlus.instance.share(ShareParams(text: shareText));
-            },
-            style: OutlinedButton.styleFrom(
-              foregroundColor: won.color,
-              side: BorderSide(color: won.color),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(30),
-              ),
-            ),
-            child: const Text("Share"),
-          ),
-          TextButton(
-            onPressed: () {
-              Navigator.of(context).pop();
-              _reset();
-            },
-            child: const Text("OK", style: TextStyle(color: Colors.white)),
-          ),
-        ],
-      ),
-    );
+    await showResultDialog(context: context, wonPrize: won, onReset: _reset);
   }
 
+  // BUILD
   @override
   Widget build(BuildContext context) {
+    //responsive sizes
     final size = MediaQuery.of(context).size;
-    final wheelSize = size.width * 0.85;
-    final gridBottom = size.height * 0.45;
-    final t = _wheelAnim.value;
+    final wheelSize =
+        size.width *
+        0.85; // Wheel fits 85 % of screen width (there's a problem with landscape screens)
+    final gridBottom = size.height * 0.45; // Grid occupies the top 45 %
+    final t = _wheelAnim.value; // 0 = hidden, 1 = fully up
 
+    // Interpolate wheel vertical position: starts below screen, ends centered
     final wheelBottom =
         (-wheelSize * 0.45) * (1 - t) + (size.height / 2 - wheelSize / 2) * t;
+    // Fade out the top UI as the wheel slides up
     final contentOpacity = 1 - t;
 
     return Scaffold(
       backgroundColor: background,
       body: Stack(
         children: [
+          // Animated grid background (top 45 %)
           Positioned(
             top: 0,
             left: 0,
             right: 0,
+            //padding from bottom
             bottom: size.height - gridBottom,
+            //function in another file
             child: AnimatedOpacity(
               opacity: contentOpacity,
               duration: const Duration(milliseconds: 200),
-              child: _AnimatedGrid(gridHeight: gridBottom),
+              child: SpinnerAnimatedGrid(gridHeight: gridBottom),
             ),
           ),
+
+          // Foreground content (fades during spin)
           AnimatedOpacity(
             opacity: contentOpacity,
             duration: const Duration(milliseconds: 200),
             child: SafeArea(
               child: Column(
                 children: [
+                  //Top-right toolbar
                   Padding(
                     padding: const EdgeInsets.symmetric(
                       horizontal: 20,
@@ -180,10 +146,17 @@ https://fortune-wheel-demo-cb9c2.web.app
                       mainAxisAlignment: MainAxisAlignment.end,
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
+                        // Ticket column: icon + count
                         Column(
                           children: [
-                            iconButton('assets/ticket.svg', () {}),
+                            iconButton(
+                              assetPath: 'assets/ticket.svg',
+                              onPressed: () {},
+                              backgroundColor: background,
+                              iconColor: onPrimary,
+                            ),
                             const SizedBox(height: 5),
+                            // Ticket count — red when 0, peach otherwise
                             if (_profile.tickets > 0)
                               textWithStyle(
                                 name: '${_profile.tickets}',
@@ -201,129 +174,52 @@ https://fortune-wheel-demo-cb9c2.web.app
                           ],
                         ),
                         const SizedBox(width: 10),
-                        iconButton('assets/account.svg', () {
-                          setState(
-                            () => _showAccountDropdown = !_showAccountDropdown,
-                          );
-                        }),
+                        // Account toggle button
+                        iconButton(
+                          assetPath: 'assets/account.svg',
+                          onPressed: () {
+                            // set state for dropdown account detail
+                            setState(
+                              () =>
+                                  _showAccountDropdown = !_showAccountDropdown,
+                            );
+                          },
+                          backgroundColor: background,
+                          iconColor: onPrimary,
+                        ),
                       ],
                     ),
                   ),
+
+                  // Animated account dropdown panel
                   AnimatedSize(
                     duration: const Duration(milliseconds: 300),
                     curve: Curves.easeInOut,
                     child: _showAccountDropdown
-                        ? Container(
-                            margin: EdgeInsets.fromLTRB(
+                        ? Padding(
+                            padding: EdgeInsets.fromLTRB(
                               size.width / 3,
                               0,
                               20,
                               0,
                             ),
-                            padding: const EdgeInsets.all(30),
-                            decoration: BoxDecoration(
-                              color: lightBackground,
-                              borderRadius: BorderRadius.circular(12),
-                              border: Border.all(
-                                color: onPrimary.withValues(alpha: 0.3),
-                              ),
-                            ),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Text(
-                                  _profile.name.isNotEmpty
-                                      ? _profile.name
-                                      : 'Guest',
-                                  style: GoogleFonts.getFont(
-                                    'Roboto',
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.bold,
-                                    color: onPrimary,
-                                  ),
-                                ),
-                                const SizedBox(height: 4),
-                                Text(
-                                  _profile.phoneNumber.isNotEmpty
-                                      ? _profile.phoneNumber
-                                      : 'No phone',
-                                  style: GoogleFonts.getFont(
-                                    'Roboto',
-                                    fontSize: 13,
-                                    color: onPrimary.withValues(alpha: 0.5),
-                                  ),
-                                ),
-                                const SizedBox(height: 8),
-                                Row(
-                                  children: [
-                                    Text(
-                                      'Chances: ',
-                                      style: GoogleFonts.getFont(
-                                        'Roboto',
-                                        fontSize: 13,
-                                        color: onPrimary.withValues(alpha: 0.5),
-                                      ),
-                                    ),
-                                    Text(
-                                      '${_profile.tickets}',
-                                      style: GoogleFonts.getFont(
-                                        'Roboto',
-                                        fontSize: 13,
-                                        fontWeight: FontWeight.bold,
-                                        color: onPrimary,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                                if (_profile.wonPrizes.isNotEmpty) ...[
-                                  const SizedBox(height: 8),
-                                  Text(
-                                    'Won Prizes:',
-                                    style: GoogleFonts.getFont(
-                                      'Roboto',
-                                      fontSize: 13,
-                                      fontWeight: FontWeight.bold,
-                                      color: onPrimary.withValues(alpha: 0.7),
-                                    ),
-                                  ),
-                                  const SizedBox(height: 4),
-                                  ..._profile.wonPrizes.map(
-                                    (p) => Padding(
-                                      padding: const EdgeInsets.only(top: 2),
-                                      child: Row(
-                                        children: [
-                                          Icon(
-                                            p.icon,
-                                            size: 14,
-                                            color: p.color,
-                                          ),
-                                          const SizedBox(width: 6),
-                                          Text(
-                                            p.name.trim(),
-                                            style: GoogleFonts.getFont(
-                                              'Roboto',
-                                              fontSize: 12,
-                                              color: onPrimary.withValues(
-                                                alpha: 0.8,
-                                              ),
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ],
+                            //function defined in components
+                            child: AccountDropdown(
+                              profile: _profile,
+                              lightBackground: lightBackground,
+                              onPrimary: onPrimary,
                             ),
                           )
                         : const SizedBox.shrink(),
                   ),
+
+                  //Center content
                   Expanded(
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         const Spacer(flex: 2),
+                        // later can be replaced by logoType
                         SizedBox(
                           height: 100,
                           child: Center(
@@ -342,46 +238,15 @@ https://fortune-wheel-demo-cb9c2.web.app
                           fontSize: 14,
                         ),
                         const SizedBox(height: 30),
-                        if (!_isSpinning && _profile.tickets > 0)
-                          ElevatedButton(
-                            onPressed: _spin,
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: primary,
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 50,
-                                vertical: 15,
-                              ),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(30),
-                              ),
-                            ),
-                            child: textWithStyle(
-                              name: "SPIN",
-                              font: 'Roboto',
-                              color: onPrimary,
-                              fontSize: 22,
-                            ),
-                          )
-                        else
-                          ElevatedButton(
-                            onPressed: () {},
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: lightBackground,
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 50,
-                                vertical: 15,
-                              ),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(30),
-                              ),
-                            ),
-                            child: textWithStyle(
-                              name: "...",
-                              font: 'Roboto',
-                              color: onPrimary,
-                              fontSize: 22,
-                            ),
-                          ),
+                        // function defined in components
+                        SpinButton(
+                          isSpinning: _isSpinning,
+                          tickets: _profile.tickets,
+                          onSpin: _spin,
+                          primary: primary,
+                          lightBackground: lightBackground,
+                          onPrimary: onPrimary,
+                        ),
                         const Spacer(flex: 3),
                       ],
                     ),
@@ -390,6 +255,9 @@ https://fortune-wheel-demo-cb9c2.web.app
               ),
             ),
           ),
+
+          //Fortune wheel slides up from bottom
+          //it is the build not class!!
           Positioned(
             bottom: wheelBottom,
             left: (size.width - wheelSize) / 2,
@@ -397,8 +265,10 @@ https://fortune-wheel-demo-cb9c2.web.app
               width: wheelSize,
               height: wheelSize,
               child: FortuneWheel(
-                selected: selectedController.stream,
+                selected: selectedController
+                    .stream, // Stream that announces the winning index
                 onAnimationEnd: _onSpinEnd,
+                //map items based on the prize data
                 items: prizes.map((prize) {
                   return FortuneItem(
                     style: FortuneItemStyle(
@@ -411,16 +281,20 @@ https://fortune-wheel-demo-cb9c2.web.app
                       child: textWithStyle(
                         name: prize.name,
                         font: 'Roboto',
-                        color: Colors.white,
+                        color: Color(0xFFE5E9EB),
                         fontSize: 12,
                       ),
                     ),
                   );
                 }).toList(),
-                animateFirst: false,
-                physics: CircularPanPhysics(),
-                duration: const Duration(seconds: 5),
-                curve: FortuneCurve.spin,
+
+                animateFirst: false, // Don't auto-spin on first render
+                physics:
+                    CircularPanPhysics(), // Allow manual drag-to-spin(responsive wheel)
+                duration: const Duration(seconds: 5), //duration of spin
+                curve: FortuneCurve
+                    .spin, // Deceleration easing for the spin(curve animation)
+                // Pointer indicator triangle at the top
                 indicators: const <FortuneIndicator>[
                   FortuneIndicator(
                     alignment: Alignment.topCenter,
@@ -437,121 +311,4 @@ https://fortune-wheel-demo-cb9c2.web.app
       ),
     );
   }
-
-  Widget iconButton(String assetPath, VoidCallback onPressed) {
-    return GestureDetector(
-      onTap: onPressed,
-      child: Container(
-        padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
-        decoration: BoxDecoration(
-          color: background,
-          border: Border.all(color: onPrimary, width: 1.8),
-          borderRadius: BorderRadius.circular(10),
-        ),
-        child: SvgPicture.asset(
-          assetPath,
-          width: 20,
-          height: 20,
-          colorFilter: const ColorFilter.mode(onPrimary, BlendMode.srcIn),
-        ),
-      ),
-    );
-  }
-}
-
-class _AnimatedGrid extends StatefulWidget {
-  final double gridHeight;
-
-  const _AnimatedGrid({required this.gridHeight});
-
-  @override
-  State<_AnimatedGrid> createState() => _AnimatedGridState();
-}
-
-class _AnimatedGridState extends State<_AnimatedGrid> {
-  final Set<int> _litTiles = {};
-  Color _currentLitColor = Colors.yellow;
-  Timer? _gridTimer;
-  final Random _random = Random();
-
-  static const _colors = [
-    Colors.yellow,
-    Colors.cyanAccent,
-    Colors.pinkAccent,
-    Colors.lightGreenAccent,
-    Colors.orangeAccent,
-    Colors.purpleAccent,
-    Colors.redAccent,
-    Colors.blueAccent,
-  ];
-
-  @override
-  void initState() {
-    super.initState();
-    _gridTimer = Timer.periodic(const Duration(milliseconds: 300), (_) {
-      if (!mounted) return;
-      setState(() {
-        _litTiles.clear();
-        _litTiles.add(_random.nextInt(81));
-        _currentLitColor = _colors[_random.nextInt(_colors.length)];
-      });
-    });
-  }
-
-  @override
-  void dispose() {
-    _gridTimer?.cancel();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      width: double.infinity,
-      height: widget.gridHeight,
-      child: GridView.builder(
-        physics: const NeverScrollableScrollPhysics(),
-        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-          crossAxisCount: 8,
-          mainAxisSpacing: 2,
-          crossAxisSpacing: 2,
-        ),
-        itemCount: 81,
-        itemBuilder: (_, index) {
-          final lit = _litTiles.contains(index);
-          return AnimatedContainer(
-            duration: const Duration(milliseconds: 100),
-            decoration: BoxDecoration(
-              color: lit
-                  ? _currentLitColor.withValues(alpha: 0.4)
-                  : Colors.transparent,
-              borderRadius: BorderRadius.circular(3),
-              border: Border.all(color: Colors.white24, width: 0.5),
-            ),
-          );
-        },
-      ),
-    );
-  }
-}
-
-Widget textWithStyle({
-  required String name,
-  required String font,
-  required Color color,
-  required double fontSize,
-}) {
-  return Text(
-    name,
-    style: GoogleFonts.getFont(
-      font,
-      fontSize: fontSize,
-      fontWeight: FontWeight.w600,
-      color: color,
-      letterSpacing: 0.5,
-    ),
-    textAlign: TextAlign.left,
-    overflow: TextOverflow.ellipsis,
-    maxLines: 1,
-  );
 }
